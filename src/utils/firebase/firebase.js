@@ -1,15 +1,25 @@
-import { initializeApp } from 'firebase/app'; // Importa a função initializeApp do Firebase para inicializar o aplicativo Firebase
+import { initializeApp } from 'firebase/app'; // Importa funções necessárias do Firebase para inicialização e configuração
+
 import {
-  getAuth,
-  signInWithRedirect,
-  signInWithPopup,
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-} from 'firebase/auth'; // Importa várias funções e objetos relacionados à autenticação do Firebase
-import { getFirestore, doc, getDoc, setDoc, collection, writeBatch, query, getDocs } from 'firebase/firestore'; // Importa várias funções e objetos relacionados ao Firestore do Firebase
+  getAuth, // Obtém a instância do serviço de autenticação
+  signInWithRedirect, // Realiza o login com redirecionamento
+  signInWithPopup, // Realiza o login com uma janela popup
+  GoogleAuthProvider, // Provedor de autenticação do Google
+  createUserWithEmailAndPassword, // Cria um novo usuário com email e senha
+  signInWithEmailAndPassword, // Faz login com email e senha
+  signOut, // Faz logout do usuário atual
+  onAuthStateChanged, // Adiciona um ouvinte para mudanças no estado de autenticação
+} from 'firebase/auth';
+import {
+  getFirestore, // Obtém a instância do serviço Firestore
+  doc, // Referência para um documento específico
+  getDoc, // Obtém dados de um documento
+  setDoc, // Define ou atualiza dados de um documento
+  collection, // Referência para uma coleção de documentos
+  writeBatch, // Permite realizar múltiplas operações de gravação em lote
+  query, // Cria uma consulta para recuperar documentos
+  getDocs, // Obtém documentos que correspondem a uma consulta
+} from 'firebase/firestore';
 
 // Configuração do Firebase com as credenciais do projeto
 const firebaseConfig = {
@@ -18,114 +28,105 @@ const firebaseConfig = {
   projectId: "roupinhas-da-mei",
   storageBucket: "roupinhas-da-mei.appspot.com",
   messagingSenderId: "823269503089",
-  appId: "1:823269503089:web:5abc79cbd4cddfff60abd0"
+  appId: "1:823269503089:web:5abc79cbd4cddfff60abd0",
 };
 
-export const firebaseApp = initializeApp(firebaseConfig); // Inicializa o aplicativo Firebase com a configuração fornecida
+const firebaseApp = initializeApp(firebaseConfig);
 
-const googleProvider = new GoogleAuthProvider(); // Cria um provedor de autenticação do Google
+const googleProvider = new GoogleAuthProvider();
 
-googleProvider.setCustomParameters({ // Define parâmetros personalizados para o provedor de autenticação do Google
+googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-export const auth = getAuth(); // Obtém o serviço de autenticação do Firebase
-
-// Funções de autenticação usando o provedor do Google
-export const signInWithGooglePopup = () => 
+export const auth = getAuth();
+export const signInWithGooglePopup = () =>
   signInWithPopup(auth, googleProvider);
 export const signInWithGoogleRedirect = () =>
   signInWithRedirect(auth, googleProvider);
 
-export const db = getFirestore(); // Obtém o serviço Firestore do Firebase
+export const db = getFirestore();
 
-
-// Função para adicionar uma coleção de documentos no Firestore
 export const addCollectionAndDocuments = async (
-  collectionKey, 
+  collectionKey,
   objectsToAdd,
   field
 ) => {
   const collectionRef = collection(db, collectionKey);
   const batch = writeBatch(db);
 
-  // Itera sobre os objetos a serem adicionados e os adiciona em lote
   objectsToAdd.forEach((object) => {
     const docRef = doc(collectionRef, object.title.toLowerCase());
-      batch.set(docRef, object);
+    batch.set(docRef, object);
   });
-  // Executa o lote de escrita no Firestore
+
   await batch.commit();
   console.log('done');
 };
 
-// Função para obter categorias e documentos do Firestore
 export const getCategoriesAndDocuments = async () => {
   const collectionRef = collection(db, 'categories');
   const q = query(collectionRef);
-  
-  // Executa a consulta e obtém um snapshot dos documentos retornados
-  const querySnapshot = await getDocs (q);
-  const categoryMap = querySnapshot.docs.reduce((acc, docSnapshot) => {
-    const { title, items } = docSnapshot.data();
-    acc[title.toLowerCase()] = items; 
-    return acc;
-  },{})
-  return categoryMap;
-}
 
-// Função para criar um documento de usuário a partir da autenticação
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map((docSnapshot) => docSnapshot.data());
+};
+
 export const createUserDocumentFromAuth = async (
   userAuth,
   additionalInformation = {}
 ) => {
-
   if (!userAuth) return;
 
   const userDocRef = doc(db, 'users', userAuth.uid);
 
-  const { displayName, email } = userAuth;
+  const userSnapshot = await getDoc(userDocRef);
 
-  const createdAt = new Date();
+  if (!userSnapshot.exists()) {
+    const { displayName, email } = userAuth;
+    const createdAt = new Date();
 
-  const userData = {
-    displayName: displayName || additionalInformation.displayName || "",
-    email: email || "",
-    createdAt,
-    ...additionalInformation,
-  };
-
-  try {
-    const userSnapshot = await getDoc(userDocRef);
-
-    // Se o documento do usuário não existir, cria um novo documento
-    if (!userSnapshot.exists()) {
-      await setDoc(userDocRef, userData);
+    try {
+      await setDoc(userDocRef, {
+        displayName,
+        email,
+        createdAt,
+        ...additionalInformation,
+      });
+    } catch (error) {
+      console.log('error creating the user', error.message);
     }
-  } catch (error) {
-    console.log('error creating the user', error.message);
   }
 
-  return userDocRef;
+  return userSnapshot;
 };
 
-// Função para criar um usuário com email e senha
 export const createAuthUserWithEmailAndPassword = async (email, password) => {
   if (!email || !password) return;
 
   return await createUserWithEmailAndPassword(auth, email, password);
 };
 
-//Função para fazer login do usuário com email e senha
 export const signInAuthUserWithEmailAndPassword = async (email, password) => {
   if (!email || !password) return;
 
   return await signInWithEmailAndPassword(auth, email, password);
 };
 
-// Função para fazer logout do usuário
 export const signOutUser = async () => await signOut(auth);
 
-// Listener para mudanças no estado de autenticação do usuário
-export const onAuthStateChangedListener = (callback) => {onAuthStateChanged(auth, callback );}
+export const onAuthStateChangedListener = (callback) =>
+  onAuthStateChanged(auth, callback);
 
+export const getCurrentUser = () => {
+  return new Promise((resolve, reject) => {
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (userAuth) => {
+        unsubscribe();
+        resolve(userAuth);
+      },
+      reject
+    );
+  });
+};
