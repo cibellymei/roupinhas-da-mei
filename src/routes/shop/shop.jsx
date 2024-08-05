@@ -11,7 +11,7 @@ export const Shop = () => {
 
   useEffect(() => {
     dispatch(fetchCategoriesStart());
-  }, []);
+  },);
 
   return (
     <Routes>
